@@ -16,26 +16,47 @@ class Website:
     """A utility class to represent a Website that have been scraped"""
     
     def __init__(self, url):
-        self.url = url
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36"
-        }
-        response = requests.get(url, headers=headers)
-        self.body = response.content
-        soup = BeautifulSoup(self.body, 'html.parser')
-        self.title = soup.title.string if soup.title else "No title found"
-        if soup.body:
-            for irrelevant in soup.body(["script", "style", "img", "input"]):
-                irrelevant.decompose()
-            self.text = soup.body.get_text(separator="\n", strip=True)
-        else:
-            self.text = ""
-        links = [link.get('href') for link in soup.find_all('a')]
-        self.links = [link for link in links if link]
+        try:
+            # Add scheme if not present
+            if not url.startswith(('http://', 'https://')):
+                url = f'https://{url}'
+            
+            self.url = url
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36"
+            }
+            
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()  # Raise an error for bad status codes
+            
+            self.body = response.content
+            soup = BeautifulSoup(self.body, 'html.parser')
+            self.title = soup.title.string if soup.title else "No title found"
+            
+            if soup.body:
+                for irrelevant in soup.body(["script", "style", "img", "input"]):
+                    irrelevant.decompose()
+                self.text = soup.body.get_text(separator="\n", strip=True)
+            else:
+                self.text = ""
+                
+            links = [link.get('href') for link in soup.find_all('a')]
+            self.links = [link for link in links if link]
+            
+        except requests.exceptions.MissingSchema:
+            raise ValueError(f"Invalid URL '{url}': No scheme supplied. Please include 'http://' or 'https://'")
+        except requests.exceptions.ConnectionError:
+            raise ConnectionError(f"Failed to connect to {url}. Please check if the URL is correct and accessible.")
+        except requests.exceptions.Timeout:
+            raise TimeoutError(f"Request to {url} timed out. Please try again later.")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Error fetching URL {url}: {str(e)}")
 
     def get_contents(self):
+        if not self.text:
+            return f"No content could be extracted from {self.url}"
         return f"Webpage Title:\n{self.title}\nWebpage Contents:\n{self.text}\n\n"
-
+    
 class CoverLetterRequest(BaseModel):
     applicant_name: str
     portfolio_url: str
@@ -119,7 +140,7 @@ def generate_cover_letter(request: CoverLetterRequest):
     user_prompt = f"""Create a cover letter for {request.applicant_name} applying for the position of {request.job_title} 
     at {request.company_name}. The applicant has the following key skills: {', '.join(request.key_skills)}.
     
-    Here is the content from their portfolio website to reference:
+    Here is the content from the portfolio website to reference:
     
     {portfolio_content}
     
