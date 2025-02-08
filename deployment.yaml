@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cover-letter-generator
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: cover-letter-generator
+  template:
+    metadata:
+      labels:
+        app: cover-letter-generator
+    spec:
+      containers:
+      - name: cover-letter-generator
+        image: sclauguico/cover-letter-generator
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+        env:
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: openai-secret
+              key: OPENAI_API_KEY

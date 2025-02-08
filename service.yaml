@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cover-letter-generator
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 30001
+    targetPort: 8000
+  selector:
+    app: cover-letter-generator
