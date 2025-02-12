@@ -5,7 +5,7 @@ metadata:
 spec:
   type: LoadBalancer
   ports:
-  - port: 30001
+  - port: 80
     targetPort: 8000
   selector:
     app: cover-letter-generator
