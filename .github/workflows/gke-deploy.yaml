@@ -10,10 +10,10 @@ on:
 
 env:
   PROJECT_ID: ${{ secrets.GKE_PROJECT }}
-  GKE_CLUSTER: cover-letter-cluster
+  GKE_CLUSTER: my-clusters
   GKE_ZONE: us-central1-a
   DEPLOYMENT_NAME: cover-letter-generator
-  IMAGE: cover-letter-api
+  IMAGE: cover-letter-generator
   REGISTRY: gcr.io
   REGION: us-central1
 
@@ -81,7 +81,7 @@ jobs:
                 app: cover-letter-generator
             spec:
               containers:
-              - name: cover-letter-api
+              - name: cover-letter-generator
                 image: gcr.io/PROJECT_ID/IMAGE:TAG
                 ports:
                 - containerPort: 8000
