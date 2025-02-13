@@ -1,0 +1,101 @@
+name: Build and Deploy to GKE
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  PROJECT_ID: ${{ secrets.GKE_PROJECT }}
+  GKE_CLUSTER: my-clusters
+  GKE_ZONE: us-central1-a
+  DEPLOYMENT_NAME: cover-letter-generator
+  IMAGE: cover-letter-generator
+  REGISTRY: gcr.io
+  REGION: us-central1
+
+jobs:
+  setup-build-publish-deploy:
+    name: Setup, Build, Publish, and Deploy
+    runs-on: ubuntu-latest
+    environment: production
+
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # Authentication to Google Cloud
+    - id: 'auth'
+      name: 'Authenticate to Google Cloud'
+      uses: 'google-github-actions/auth@v2'
+      with:
+        credentials_json: '${{ secrets.GKE_SA_KEY }}'
+        
+    # Get GKE credentials
+    - id: 'get-credentials'
+      name: 'Get GKE credentials'
+      uses: 'google-github-actions/get-gke-credentials@v2'
+      with:
+        cluster_name: ${{ env.GKE_CLUSTER }}
+        location: ${{ env.GKE_ZONE }}
+
+    # Configure Docker authentication
+    - name: Configure Docker
+      run: |-
+        gcloud --quiet auth configure-docker ${{ env.REGISTRY }}
+    
+    # Build Docker image
+    - name: Build Docker image
+      run: |-
+        docker build \
+          --tag "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE }}:${{ github.sha }}" \
+          --build-arg GITHUB_SHA="${{ github.sha }}" \
+          --build-arg GITHUB_REF="${{ github.ref }}" \
+          .
+
+    # Push image to Google Container Registry
+    - name: Push Docker image
+      run: |-
+        docker push "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE }}:${{ github.sha }}"
+
+    # Set up kustomize
+    - name: Set up Kustomize
+      run: |-
+        curl -sfLo kustomize https://github.com/kubernetes-sigs/kustomize/releases/download/v3.1.0/kustomize_3.1.0_linux_amd64
+        chmod u+x ./kustomize
+
+    # Create Kubernetes secrets
+    - name: Create Kubernetes secrets
+      run: |-
+        kubectl create secret generic openai-secret \
+          --from-literal=OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+    # Deploy to GKE
+    - name: Deploy to GKE
+      run: |-
+        # Update the image tag
+        ./kustomize edit set image ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.IMAGE }}:${{ github.sha }}
+        
+        # Apply the configuration
+        ./kustomize build . | kubectl apply -f -
+        
+        # Wait for the deployment to complete
+        kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }}
+        
+        # Display service information
+        kubectl get services -o wide
+
+    # Verify deployment
+    - name: Verify deployment
+      run: |-
+        kubectl get deployment ${{ env.DEPLOYMENT_NAME }}
+        kubectl get pods -l app=${{ env.DEPLOYMENT_NAME }}
+        kubectl get service ${{ env.DEPLOYMENT_NAME }}
